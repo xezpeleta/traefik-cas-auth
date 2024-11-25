@@ -1,0 +1,7 @@
+displayName: CAS Authentication
+type: middleware
+import: github.com/xezpeleta/traefik-cas-auth
+summary: Apereo CAS SSO authentication middleware for Traefik
+testData:
+  casServerURL: https://cas.example.com
+  serviceURLPattern: mydomain.com
