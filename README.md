@@ -22,6 +22,9 @@ The middleware supports the following configuration options:
 The `serviceURLPatterns` field accepts an array of regular expressions that match against the `host + path` of incoming requests. All patterns must match valid HTTPS URLs.
 
 Common pattern examples:
+- `"(app|api)\\.example\\.com/.*"` - Match only app.example.com or api.example.com
+- `"example\\.com/protected/.*"` - Match paths starting with /protected/ on example.com
+- `"example\\.com/(api|docs)/.*"` - Match paths starting with /api/ or /docs/ on example.com
 
 ## Usage
 
@@ -55,7 +58,7 @@ http:
                 name: "my-service"
 ```
 
-## Docker Compose Example
+### Docker Compose Example
 
 Here's a complete example using docker-compose to protect the Traefik whoami service with CAS authentication:
 
@@ -87,20 +90,13 @@ services:
     labels:
       - "traefik.http.routers.whoami.rule=Host(`whoami.example.com`)"
       - "traefik.http.routers.whoami.entrypoints=websecure"
-      - "traefik.http.routers.whoami.tls.certresolver=myresolver"
-      - "traefik.http.middlewares.cas-auth.plugin.cas-auth.casServerUrl=https://cas.example.com"
-      - "traefik.http.middlewares.cas-auth.plugin.cas-auth.serviceUrlPattern=https://*.example.com/*"
-      - "traefik.http.middlewares.cas-auth.plugin.cas-auth.sessionTimeout=24h"
       - "traefik.http.routers.whoami.middlewares=cas-auth"
 ```
 
-## Mixed configuration with docker-compose labels and dynamic configuration file
+### Mixed configuration with docker-compose labels and dynamic configuration file
 
 The following example shows how to mix the configuration of the middleware using docker-compose labels and a dynamic configuration file:
 
-## Mixed Configuration Example
-
-Here's an example using both Docker Compose labels and a dynamic configuration file:
 - The CAS middleware is configured using Docker Compose labels.
 - A protected service (whoami) is configured using Docker Compose labels.
 - A protected site (protectedsite.example.com) is configured using a dynamic configuration file.
@@ -108,7 +104,7 @@ Here's an example using both Docker Compose labels and a dynamic configuration f
 The `docker-compose.yml` file uses both Docker Compose labels and a dynamic configuration file (`dynamic.yml`):
 
 ```yaml
-### docker-compose.yml
+# docker-compose.yml
 
 services:
   traefik:
@@ -145,7 +141,7 @@ services:
 The dynamic configuration file (`dynamic.yml`) configures the protected site `protectedsite.example.com` using the CAS middleware:
 
 ```yaml
-### dynamic.yml
+# dynamic.yml
 
 http:
   middlewares:
@@ -153,7 +149,8 @@ http:
       plugin:
         cas-auth:
           casServerUrl: "https://cas.example.com"
-          serviceUrlPattern: "*.example.com"
+          serviceUrlPatterns: 
+            - "*.example.com"
           sessionTimeout: 24h
 
   routers:
@@ -185,6 +182,11 @@ http:
 - [ ] Configurable cookie attributes (secure, httpOnly, sameSite)
 
 ### Features
+
+- [ ] Currently only CAS 3.0 is supported. Support for CAS 1.0 and 2.0.
+### Features
+- [ ] Improve error handling and logging
+- [ ] Improve error responses to clients
 
 - [ ] Currently only CAS 3.0 is supported. Support for CAS 1.0 and 2.0.
 - [ ] Improve error handling and logging
