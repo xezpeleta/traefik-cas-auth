@@ -64,6 +64,7 @@ type CASAuth struct {
     sessions map[string]sessionInfo
     timeout  time.Duration    // Add this field
     client   *http.Client
+    ticketMap map[string]string // maps CAS tickets to session IDs
 }
 
 type sessionInfo struct {
@@ -93,6 +94,11 @@ type AuthFailure struct {
 type Attributes struct {
     Email       string      `xml:"email"`
     // Add more attributes as needed
+}
+
+type LogoutRequest struct {
+    XMLName   xml.Name `xml:"LogoutRequest"`
+    SessionID string   `xml:"SessionIdentifier"`
 }
 
 func validateServiceURL(allowedHosts []string, pathPatterns []string, serviceURL string) bool {
@@ -168,6 +174,7 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
         sessions: make(map[string]sessionInfo),
         timeout:  timeout,
         client:   client,
+        ticketMap: make(map[string]string), // Initialize ticketMap
     }
 
     // Start session cleanup goroutine with the timeout value
@@ -178,6 +185,12 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 
 func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     fmt.Printf("Processing request for: %s%s\n", req.Host, req.URL.Path)
+
+    // Add SLO handler right after the first few lines
+    if req.Method == "POST" && req.URL.Path == "/cas/logout" {
+        c.handleSLO(rw, req)
+        return
+    }
 
     // First declaration of serviceURL
     serviceURL := fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
@@ -249,6 +262,8 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
                 expiry:   time.Now().Add(c.timeout),    // Use c.timeout here
                 csrfToken: csrfToken,
             }
+            // Store ticket mapping when validation is successful
+            c.ticketMap[ticket] = sessionID
 
             // Set session cookie
             http.SetCookie(rw, &http.Cookie{
@@ -359,6 +374,8 @@ func (c *CASAuth) validateTicket(ticket, service string) (bool, string) {
 
     if serviceResponse.Success != nil {
         fmt.Printf("Ticket validation successful for user: %s\n", serviceResponse.Success.User)
+        // Store ticket mapping when validation is successful
+        c.ticketMap[ticket] = "" // Will be updated when session is created
         return true, serviceResponse.Success.User
     }
 
@@ -369,6 +386,29 @@ func (c *CASAuth) validateTicket(ticket, service string) (bool, string) {
     }
 
     return false, ""
+}
+
+func (c *CASAuth) handleSLO(rw http.ResponseWriter, req *http.Request) {
+    body, err := ioutil.ReadAll(req.Body)
+    if err != nil {
+        http.Error(rw, "Error reading request body", http.StatusBadRequest)
+        return
+    }
+
+    var logoutReq LogoutRequest
+    if err := xml.Unmarshal(body, &logoutReq); err != nil {
+        http.Error(rw, "Error parsing logout request", http.StatusBadRequest)
+        return
+    }
+
+    // Get session ID from ticket
+    if sessionID, exists := c.ticketMap[logoutReq.SessionID]; exists {
+        // Delete both session and ticket mapping
+        delete(c.sessions, sessionID)
+        delete(c.ticketMap, logoutReq.SessionID)
+    }
+
+    rw.WriteHeader(http.StatusOK)
 }
 
 func generateSessionID() string {
@@ -397,6 +437,10 @@ func (c *CASAuth) cleanupSessions() {
         now := time.Now()
         for id, session := range c.sessions {
             if now.After(session.expiry) {
+                // Also cleanup ticket mapping
+                if session.ticket != "" {
+                    delete(c.ticketMap, session.ticket)
+                }
                 delete(c.sessions, id)
             }
         }
