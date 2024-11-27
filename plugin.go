@@ -8,6 +8,8 @@ import (
     "net/url"
     "strings"
     "time"
+    "encoding/xml"
+    "io/ioutil"
 )
 
 // Config holds the plugin configuration
@@ -34,6 +36,28 @@ type CASAuth struct {
 type sessionInfo struct {
     username string
     expiry   time.Time
+}
+
+// Add these structures for CAS validation response
+type ServiceResponse struct {
+    XMLName     xml.Name    `xml:"serviceResponse"`
+    Success     *AuthSuccess `xml:"authenticationSuccess"`
+    Failure     *AuthFailure `xml:"authenticationFailure"`
+}
+
+type AuthSuccess struct {
+    User        string      `xml:"user"`
+    Attributes  *Attributes `xml:"attributes"`
+}
+
+type AuthFailure struct {
+    Code        string      `xml:",attr"`
+    Description string      `xml:",chardata"`
+}
+
+type Attributes struct {
+    Email       string      `xml:"email"`
+    // Add more attributes as needed
 }
 
 // New creates a new CAS auth middleware plugin
@@ -155,11 +179,42 @@ func (c *CASAuth) clearSessionCookie(rw http.ResponseWriter) {
 }
 
 func (c *CASAuth) validateTicket(ticket, service string) (bool, string) {
-    fmt.Printf("Validating ticket: %s for service: %s\n", ticket, service)
-    // Implement CAS ticket validation logic here
-    // This should make a request to CAS server's /serviceValidate endpoint
-    // Parse XML response and return validation status and username
-    return true, "example_user"
+    validateURL := fmt.Sprintf("%s/p3/serviceValidate?ticket=%s&service=%s",
+        c.config.CASServerURL,
+        url.QueryEscape(ticket),
+        url.QueryEscape(service))
+
+    resp, err := http.Get(validateURL)
+    if err != nil {
+        fmt.Printf("Error validating ticket: %v\n", err)
+        return false, ""
+    }
+    defer resp.Body.Close()
+
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        fmt.Printf("Error reading validation response: %v\n", err)
+        return false, ""
+    }
+
+    var serviceResponse ServiceResponse
+    if err := xml.Unmarshal(body, &serviceResponse); err != nil {
+        fmt.Printf("Error parsing validation response: %v\n", err)
+        return false, ""
+    }
+
+    if serviceResponse.Success != nil {
+        fmt.Printf("Ticket validation successful for user: %s\n", serviceResponse.Success.User)
+        return true, serviceResponse.Success.User
+    }
+
+    if serviceResponse.Failure != nil {
+        fmt.Printf("Ticket validation failed: %s - %s\n", 
+            serviceResponse.Failure.Code, 
+            serviceResponse.Failure.Description)
+    }
+
+    return false, ""
 }
 
 func generateSessionID() string {
