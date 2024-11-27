@@ -108,7 +108,7 @@ func validateServiceURL(allowedHosts []string, pathPatterns []string, serviceURL
     }
 
     // Check if URL is absolute and has https scheme
-    if !parsedURL.IsAbs() || parsedURL.Scheme != "https" {
+    if (!parsedURL.IsAbs() || parsedURL.Scheme != "https") {
         return false
     }
 
@@ -389,26 +389,39 @@ func (c *CASAuth) validateTicket(ticket, service string) (bool, string) {
 }
 
 func (c *CASAuth) handleSLO(rw http.ResponseWriter, req *http.Request) {
+    fmt.Printf("Received SLO request from: %s\n", req.RemoteAddr)
+    
     body, err := ioutil.ReadAll(req.Body)
     if err != nil {
+        fmt.Printf("Error reading SLO request body: %v\n", err)
         http.Error(rw, "Error reading request body", http.StatusBadRequest)
         return
     }
+    
+    fmt.Printf("SLO request body: %s\n", string(body))
 
     var logoutReq LogoutRequest
     if err := xml.Unmarshal(body, &logoutReq); err != nil {
+        fmt.Printf("Error parsing SLO request XML: %v\n", err)
         http.Error(rw, "Error parsing logout request", http.StatusBadRequest)
         return
     }
 
+    fmt.Printf("Parsed SLO request - SessionID: %s\n", logoutReq.SessionID)
+
     // Get session ID from ticket
     if sessionID, exists := c.ticketMap[logoutReq.SessionID]; exists {
+        fmt.Printf("Found matching session ID: %s for ticket: %s\n", sessionID, logoutReq.SessionID)
         // Delete both session and ticket mapping
         delete(c.sessions, sessionID)
         delete(c.ticketMap, logoutReq.SessionID)
+        fmt.Printf("Successfully removed session and ticket mapping\n")
+    } else {
+        fmt.Printf("No session found for ticket: %s\n", logoutReq.SessionID)
     }
 
     rw.WriteHeader(http.StatusOK)
+    fmt.Printf("SLO request completed successfully\n")
 }
 
 func generateSessionID() string {
