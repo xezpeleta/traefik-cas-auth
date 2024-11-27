@@ -83,7 +83,7 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
         timeout:  timeout,
     }
 
-    // Start session cleanup goroutine
+    // Start session cleanup goroutine with cas.timeout
     go cleanupSessions(cas.sessions, cas.timeout)
     
     return cas, nil
@@ -241,9 +241,9 @@ func generateSessionID() string {
     return "example_session_id"
 }
 
-// Add session cleanup function
-func cleanupSessions(sessions map[string]sessionInfo, timeout time.Duration) {
-    ticker := time.NewTicker(timeout / 2)
+// Update cleanupSessions function parameters
+func cleanupSessions(sessions map[string]sessionInfo, cleanupInterval time.Duration) {
+    ticker := time.NewTicker(cleanupInterval / 2)
     for range ticker.C {
         now := time.Now()
         for id, session := range sessions {
