@@ -13,7 +13,6 @@ The middleware supports the following configuration options:
 |--------|------|----------|---------|-------------|
 | `casServerURL` | string | Yes | - | The base URL of your CAS server |
 | `serviceURLPatterns` | []string | Yes | - | Array of regex patterns for allowed service URLs |
-| `serviceURLPattern` | string | No | - | Deprecated: Single pattern support (use serviceURLPatterns instead) |
 | `sessionTimeout` | string | No | "24h" | Session duration (e.g., "24h", "30m") |
 | `insecureSkipVerify` | bool | No | false | Skip TLS certificate verification |
 
