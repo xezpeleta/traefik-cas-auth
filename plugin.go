@@ -20,7 +20,6 @@ import (
 // Config holds the plugin configuration
 type Config struct {
     CASServerURL string `json:"casServerURL,omitempty"`
-    ServiceURLPattern string `json:"serviceURLPattern,omitempty"` // deprecated
     ServiceURLPatterns []string `json:"serviceURLPatterns,omitempty"`
     SessionTimeout string `json:"sessionTimeout,omitempty"`
     InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
@@ -35,11 +34,6 @@ func CreateConfig() *Config {
 }
 
 func (c *Config) ValidateServicePattern() error {
-    // Handle deprecated single pattern
-    if c.ServiceURLPattern != "" {
-        c.ServiceURLPatterns = append(c.ServiceURLPatterns, c.ServiceURLPattern)
-    }
-
     if len(c.ServiceURLPatterns) == 0 {
         return fmt.Errorf("at least one service URL pattern must be specified")
     }
