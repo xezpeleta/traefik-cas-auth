@@ -95,9 +95,15 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     cookie, err := req.Cookie("cas_session")
     if err == nil {
         if session, exists := c.sessions[cookie.Value]; exists && time.Now().Before(session.expiry) {
-            fmt.Printf("Valid session found for user: %s\n", session.username)
-            c.next.ServeHTTP(rw, req)
-            return
+            // Validate session with CAS server
+            if c.validateSession(session.username) {
+                fmt.Printf("Valid session found for user: %s\n", session.username)
+                c.next.ServeHTTP(rw, req)
+                return
+            }
+            fmt.Printf("CAS session invalid for user: %s\n", session.username)
+            delete(c.sessions, cookie.Value)
+            c.clearSessionCookie(rw)
         } else if exists {
             fmt.Printf("Session expired for user: %s\n", session.username)
             delete(c.sessions, cookie.Value)
@@ -215,6 +221,37 @@ func (c *CASAuth) validateTicket(ticket, service string) (bool, string) {
     }
 
     return false, ""
+}
+
+func (c *CASAuth) validateSession(username string) bool {
+    validateURL := fmt.Sprintf("%s/serviceValidate", c.config.CASServerURL)
+    
+    resp, err := http.Get(validateURL)
+    if err != nil {
+        fmt.Printf("Error validating session: %v\n", err)
+        return false
+    }
+    defer resp.Body.Close()
+
+    // Check response status code
+    if resp.StatusCode != http.StatusOK {
+        fmt.Printf("Session validation failed with status: %d\n", resp.StatusCode)
+        return false
+    }
+
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        fmt.Printf("Error reading session validation response: %v\n", err)
+        return false
+    }
+
+    var serviceResponse ServiceResponse
+    if err := xml.Unmarshal(body, &serviceResponse); err != nil {
+        fmt.Printf("Error parsing session validation response: %v\n", err)
+        return false
+    }
+
+    return serviceResponse.Success != nil && serviceResponse.Success.User == username
 }
 
 func generateSessionID() string {
