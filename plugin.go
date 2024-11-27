@@ -114,8 +114,8 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
                 SameSite: http.SameSiteStrictMode,
             })
 
-            // Redirect to original URL without ticket
-            http.Redirect(rw, req, serviceURL, http.StatusFound)
+            // Serve the content directly after successful validation
+            c.next.ServeHTTP(rw, req)
             return
         }
     }
