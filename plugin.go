@@ -152,9 +152,14 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
     // No valid session or ticket, redirect to CAS login
     serviceURL := fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
-    if req.URL.RawQuery != "" {
-        serviceURL += "?" + req.URL.RawQuery
+    
+    // Create new query parameters without any 'ticket' parameters
+    q := req.URL.Query()
+    q.Del("ticket")
+    if len(q) > 0 {
+        serviceURL += "?" + q.Encode()
     }
+    
     loginURL := fmt.Sprintf("%s/login?service=%s", 
         c.config.CASServerURL, 
         url.QueryEscape(serviceURL))
