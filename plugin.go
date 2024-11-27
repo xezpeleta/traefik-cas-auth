@@ -13,13 +13,16 @@ import (
     "io/ioutil"
     "crypto/rand"
     "encoding/hex"
+    "path/filepath"
+    "regexp"
 )
 
 // Config holds the plugin configuration
 type Config struct {
     CASServerURL string `json:"casServerURL,omitempty"`
-    ServiceURLPattern string `json:"serviceURLPattern,omitempty"`
-    SessionTimeout string `json:"sessionTimeout,omitempty"` // Changed to string type
+    ServiceURLPattern string `json:"serviceURLPattern,omitempty"` // deprecated
+    ServiceURLPatterns []string `json:"serviceURLPatterns,omitempty"`
+    SessionTimeout string `json:"sessionTimeout,omitempty"`
     InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
 }
 
@@ -29,6 +32,26 @@ func CreateConfig() *Config {
         SessionTimeout: "24h",  // Default timeout as string
         InsecureSkipVerify: false,  // Default to secure verification
     }
+}
+
+func (c *Config) ValidateServicePattern() error {
+    // Handle deprecated single pattern
+    if c.ServiceURLPattern != "" {
+        c.ServiceURLPatterns = append(c.ServiceURLPatterns, c.ServiceURLPattern)
+    }
+
+    if len(c.ServiceURLPatterns) == 0 {
+        return fmt.Errorf("at least one service URL pattern must be specified")
+    }
+
+    // Validate all patterns are valid regex
+    for _, pattern := range c.ServiceURLPatterns {
+        if _, err := regexp.Compile(pattern); err != nil {
+            return fmt.Errorf("invalid regex pattern '%s': %v", pattern, err)
+        }
+    }
+
+    return nil
 }
 
 type CASAuth struct {
@@ -69,6 +92,31 @@ type Attributes struct {
     // Add more attributes as needed
 }
 
+func validateServiceURL(patterns []string, serviceURL string) bool {
+    parsedURL, err := url.Parse(serviceURL)
+    if err != nil {
+        return false
+    }
+
+    // Check if URL is absolute and has https scheme
+    if !parsedURL.IsAbs() || parsedURL.Scheme != "https" {
+        return false
+    }
+
+    testString := parsedURL.Host + parsedURL.Path
+
+    // Try to match any of the patterns
+    for _, pattern := range patterns {
+        if regexp, err := regexp.Compile(pattern); err == nil {
+            if regexp.MatchString(testString) {
+                return true
+            }
+        }
+    }
+
+    return false
+}
+
 // New creates a new CAS auth middleware plugin
 func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
     fmt.Printf("Initializing CAS Auth middleware with CAS server: %s\n", config.CASServerURL)
@@ -80,6 +128,10 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
     timeout, err := time.ParseDuration(config.SessionTimeout)
     if err != nil {
         return nil, fmt.Errorf("invalid SessionTimeout format: %v", err)
+    }
+
+    if err := config.ValidateServicePattern(); err != nil {
+        return nil, err
     }
 
     // Create custom HTTP client with TLS configuration
@@ -109,9 +161,10 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     fmt.Printf("Processing request for: %s%s\n", req.Host, req.URL.Path)
 
     // Check if request matches service pattern
-    if (!strings.Contains(req.Host, c.config.ServiceURLPattern)) {
-        fmt.Printf("Request does not match service pattern: %s\n", c.config.ServiceURLPattern)
-        c.next.ServeHTTP(rw, req)
+    serviceURL := fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
+    if !validateServiceURL(c.config.ServiceURLPatterns, serviceURL) {
+        fmt.Printf("Invalid service URL: %s\n", serviceURL)
+        http.Error(rw, "Invalid service URL", http.StatusBadRequest)
         return
     }
 
@@ -255,6 +308,11 @@ func (c *CASAuth) clearSessionCookie(rw http.ResponseWriter) {
 }
 
 func (c *CASAuth) validateTicket(ticket, service string) (bool, string) {
+    if !validateServiceURL(c.config.ServiceURLPatterns, service) {
+        fmt.Printf("Invalid service URL during ticket validation: %s\n", service)
+        return false, ""
+    }
+
     validateURL := fmt.Sprintf("%s/p3/serviceValidate?ticket=%s&service=%s",
         c.config.CASServerURL,
         url.QueryEscape(ticket),

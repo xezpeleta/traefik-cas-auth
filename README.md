@@ -5,6 +5,24 @@
 
 This is a simple [Traefik](https://traefik.io/) middleware that allows you to authenticate users using a [Apereo CAS](https://apereo.github.io/cas) server.
 
+## Configuration
+
+The middleware supports the following configuration options:
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `casServerURL` | string | Yes | - | The base URL of your CAS server |
+| `serviceURLPatterns` | []string | Yes | - | Array of regex patterns for allowed service URLs |
+| `serviceURLPattern` | string | No | - | Deprecated: Single pattern support (use serviceURLPatterns instead) |
+| `sessionTimeout` | string | No | "24h" | Session duration (e.g., "24h", "30m") |
+| `insecureSkipVerify` | bool | No | false | Skip TLS certificate verification |
+
+### Service URL Patterns
+
+The `serviceURLPatterns` field accepts an array of regular expressions that match against the `host + path` of incoming requests. All patterns must match valid HTTPS URLs.
+
+Common pattern examples:
+
 ## Usage
 
 To use this plugin, you would configure it in your Traefik static configuration as follows:
@@ -154,10 +172,20 @@ http:
           - url: "http://internal-protected-site:8080"
 ```
 
-
-
 ## Todo
 
-- [ ] Proper session ID generation and secure storage
-- [ ] Ticket validation logic for different CAS protocols
-- [ ] Enhance security (CSRF, etc)# traefik-cas-auth
+### Security
+
+- [ ] Service URL validation to prevent open redirects
+- [ ] Session storage in Redis for better performance and scalability.
+- [ ] CSRF protection
+- [ ] Secure session ID generation
+- [ ] Rate limiting login attempts
+- [ ] Protection against session fixation attacks
+- [ ] Configurable cookie attributes (secure, httpOnly, sameSite)
+
+### Features
+
+- [ ] Currently only CAS 3.0 is supported. Support for CAS 1.0 and 2.0.
+- [ ] Improve error handling and logging
+- [ ] Improve error responses to clients
