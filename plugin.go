@@ -16,13 +16,13 @@ import (
 type Config struct {
     CASServerURL string `json:"casServerURL,omitempty"`
     ServiceURLPattern string `json:"serviceURLPattern,omitempty"`
-    SessionTimeout time.Duration `json:"sessionTimeout,omitempty"`
+    SessionTimeout string `json:"sessionTimeout,omitempty"` // Changed to string type
 }
 
 // CreateConfig creates the default plugin configuration
 func CreateConfig() *Config {
     return &Config{
-        SessionTimeout: 24 * time.Hour,
+        SessionTimeout: "24h",  // Default timeout as string
     }
 }
 
@@ -68,6 +68,12 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
         return nil, fmt.Errorf("CASServerURL cannot be empty")
     }
 
+    // Parse session timeout
+    timeout, err := time.ParseDuration(config.SessionTimeout)
+    if err != nil {
+        return nil, fmt.Errorf("invalid SessionTimeout format: %v", err)
+    }
+
     cas := &CASAuth{
         next:     next,
         name:     name,
@@ -75,8 +81,8 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
         sessions: make(map[string]sessionInfo),
     }
 
-    // Start session cleanup goroutine
-    go cleanupSessions(cas.sessions, config.SessionTimeout)
+    // Start session cleanup goroutine with parsed duration
+    go cleanupSessions(cas.sessions, timeout)
     
     return cas, nil
 }
@@ -130,7 +136,7 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
             c.sessions[sessionID] = sessionInfo{
                 username: username,
                 ticket:   ticket,
-                expiry:   time.Now().Add(c.config.SessionTimeout),
+                expiry:   time.Now().Add(timeout),
             }
 
             // Set session cookie
@@ -138,7 +144,7 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
                 Name:     "cas_session",
                 Value:    sessionID,
                 Path:     "/",
-                Expires:  time.Now().Add(c.config.SessionTimeout),
+                Expires:  time.Now().Add(timeout),
                 HttpOnly: true,
                 Secure:   true,
                 SameSite: http.SameSiteStrictMode,
