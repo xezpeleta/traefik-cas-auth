@@ -38,6 +38,7 @@ type sessionInfo struct {
 
 // New creates a new CAS auth middleware plugin
 func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
+    fmt.Printf("Initializing CAS Auth middleware with CAS server: %s\n", config.CASServerURL)
     if len(config.CASServerURL) == 0 {
         return nil, fmt.Errorf("CASServerURL cannot be empty")
     }
@@ -51,8 +52,11 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 }
 
 func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+    fmt.Printf("Processing request for: %s%s\n", req.Host, req.URL.Path)
+
     // Check if request matches service pattern
-    if !strings.Contains(req.Host, c.config.ServiceURLPattern) {
+    if (!strings.Contains(req.Host, c.config.ServiceURLPattern)) {
+        fmt.Printf("Request does not match service pattern: %s\n", c.config.ServiceURLPattern)
         c.next.ServeHTTP(rw, req)
         return
     }
@@ -61,23 +65,29 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     cookie, err := req.Cookie("cas_session")
     if err == nil {
         if session, exists := c.sessions[cookie.Value]; exists && time.Now().Before(session.expiry) {
-            // Valid session exists, proceed
+            fmt.Printf("Valid session found for user: %s\n", session.username)
             c.next.ServeHTTP(rw, req)
             return
+        } else if exists {
+            fmt.Printf("Session expired for user: %s\n", session.username)
         }
     }
 
     // Check for CAS ticket in query params
     ticket := req.URL.Query().Get("ticket")
     if ticket != "" {
+        fmt.Printf("Processing CAS ticket: %s\n", ticket)
         // Validate ticket with CAS server
         if validated, username := c.validateTicket(ticket, req.Host); validated {
+            fmt.Printf("Ticket validated successfully for user: %s\n", username)
             // Create new session
             sessionID := generateSessionID()
             c.sessions[sessionID] = sessionInfo{
                 username: username,
                 expiry:   time.Now().Add(c.config.SessionTimeout),
             }
+
+            fmt.Printf("Created new session for user: %s\n", username)
 
             // Set session cookie
             http.SetCookie(rw, &http.Cookie{
@@ -97,6 +107,8 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
             redirectURL.RawQuery = q.Encode()
             http.Redirect(rw, req, redirectURL.String(), http.StatusFound)
             return
+        } else {
+            fmt.Printf("Ticket validation failed\n")
         }
     }
 
@@ -105,10 +117,12 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     loginURL := fmt.Sprintf("%s/login?service=%s", 
         c.config.CASServerURL, 
         url.QueryEscape(serviceURL))
+    fmt.Printf("Redirecting to CAS login: %s\n", loginURL)
     http.Redirect(rw, req, loginURL, http.StatusFound)
 }
 
 func (c *CASAuth) validateTicket(ticket, service string) (bool, string) {
+    fmt.Printf("Validating ticket: %s for service: %s\n", ticket, service)
     // Implement CAS ticket validation logic here
     // This should make a request to CAS server's /serviceValidate endpoint
     // Parse XML response and return validation status and username
