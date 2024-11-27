@@ -80,11 +80,11 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
         name:     name,
         config:   config,
         sessions: make(map[string]sessionInfo),
-        timeout:  timeout,    // Store the timeout
+        timeout:  timeout,
     }
 
-    // Start session cleanup goroutine with parsed duration
-    go cleanupSessions(cas.sessions, timeout)
+    // Start session cleanup goroutine
+    go cleanupSessions(cas.sessions, cas.timeout)
     
     return cas, nil
 }
