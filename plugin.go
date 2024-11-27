@@ -61,6 +61,12 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
         return
     }
 
+    // Check for CAS single logout request
+    if req.URL.Path == "/cas/logout" {
+        c.handleLogout(rw, req)
+        return
+    }
+
     // Check for existing session
     cookie, err := req.Cookie("cas_session")
     if err == nil {
@@ -70,6 +76,8 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
             return
         } else if exists {
             fmt.Printf("Session expired for user: %s\n", session.username)
+            delete(c.sessions, cookie.Value)
+            c.clearSessionCookie(rw)
         }
     }
 
@@ -77,8 +85,16 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     ticket := req.URL.Query().Get("ticket")
     if ticket != "" {
         fmt.Printf("Processing CAS ticket: %s\n", ticket)
+        // Build service URL with original query parameters (excluding ticket)
+        q := req.URL.Query()
+        q.Del("ticket")
+        serviceURL := fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
+        if len(q) > 0 {
+            serviceURL += "?" + q.Encode()
+        }
+
         // Validate ticket with CAS server
-        if validated, username := c.validateTicket(ticket, req.Host); validated {
+        if validated, username := c.validateTicket(ticket, serviceURL); validated {
             fmt.Printf("Ticket validated successfully for user: %s\n", username)
             // Create new session
             sessionID := generateSessionID()
@@ -86,8 +102,6 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
                 username: username,
                 expiry:   time.Now().Add(c.config.SessionTimeout),
             }
-
-            fmt.Printf("Created new session for user: %s\n", username)
 
             // Set session cookie
             http.SetCookie(rw, &http.Cookie{
@@ -101,24 +115,43 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
             })
 
             // Redirect to original URL without ticket
-            redirectURL := *req.URL
-            q := redirectURL.Query()
-            q.Del("ticket")
-            redirectURL.RawQuery = q.Encode()
-            http.Redirect(rw, req, redirectURL.String(), http.StatusFound)
+            http.Redirect(rw, req, serviceURL, http.StatusFound)
             return
-        } else {
-            fmt.Printf("Ticket validation failed\n")
         }
     }
 
     // No valid session or ticket, redirect to CAS login
     serviceURL := fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
+    if req.URL.RawQuery != "" {
+        serviceURL += "?" + req.URL.RawQuery
+    }
     loginURL := fmt.Sprintf("%s/login?service=%s", 
         c.config.CASServerURL, 
         url.QueryEscape(serviceURL))
     fmt.Printf("Redirecting to CAS login: %s\n", loginURL)
     http.Redirect(rw, req, loginURL, http.StatusFound)
+}
+
+func (c *CASAuth) handleLogout(rw http.ResponseWriter, req *http.Request) {
+    cookie, err := req.Cookie("cas_session")
+    if err == nil {
+        delete(c.sessions, cookie.Value)
+    }
+    c.clearSessionCookie(rw)
+    logoutURL := fmt.Sprintf("%s/logout", c.config.CASServerURL)
+    http.Redirect(rw, req, logoutURL, http.StatusFound)
+}
+
+func (c *CASAuth) clearSessionCookie(rw http.ResponseWriter) {
+    http.SetCookie(rw, &http.Cookie{
+        Name:     "cas_session",
+        Value:    "",
+        Path:     "/",
+        Expires:  time.Unix(0, 0),
+        HttpOnly: true,
+        Secure:   true,
+        SameSite: http.SameSiteStrictMode,
+    })
 }
 
 func (c *CASAuth) validateTicket(ticket, service string) (bool, string) {
