@@ -27,10 +27,11 @@ func CreateConfig() *Config {
 }
 
 type CASAuth struct {
-    next    http.Handler
-    name    string
-    config  *Config
+    next     http.Handler
+    name     string
+    config   *Config
     sessions map[string]sessionInfo
+    timeout  time.Duration    // Add this field
 }
 
 type sessionInfo struct {
@@ -79,6 +80,7 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
         name:     name,
         config:   config,
         sessions: make(map[string]sessionInfo),
+        timeout:  timeout,    // Store the timeout
     }
 
     // Start session cleanup goroutine with parsed duration
@@ -136,7 +138,7 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
             c.sessions[sessionID] = sessionInfo{
                 username: username,
                 ticket:   ticket,
-                expiry:   time.Now().Add(timeout),
+                expiry:   time.Now().Add(c.timeout),    // Use c.timeout here
             }
 
             // Set session cookie
@@ -144,7 +146,7 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
                 Name:     "cas_session",
                 Value:    sessionID,
                 Path:     "/",
-                Expires:  time.Now().Add(timeout),
+                Expires:  time.Now().Add(c.timeout),    // Use c.timeout here
                 HttpOnly: true,
                 Secure:   true,
                 SameSite: http.SameSiteStrictMode,
