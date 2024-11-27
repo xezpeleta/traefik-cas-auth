@@ -172,10 +172,7 @@ http:
 
 ### Security
 
-- [ ] Service URL validation to prevent open redirects
 - [ ] Session storage in Redis for better performance and scalability.
-- [ ] CSRF protection
-- [ ] Secure session ID generation
 - [ ] Rate limiting login attempts
 - [ ] Protection against session fixation attacks
 - [ ] Configurable cookie attributes (secure, httpOnly, sameSite)
@@ -183,10 +180,4 @@ http:
 ### Features
 
 - [ ] Currently only CAS 3.0 is supported. Support for CAS 1.0 and 2.0.
-### Features
-- [ ] Improve error handling and logging
-- [ ] Improve error responses to clients
-
-- [ ] Currently only CAS 3.0 is supported. Support for CAS 1.0 and 2.0.
-- [ ] Improve error handling and logging
 - [ ] Improve error responses to clients
