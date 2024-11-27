@@ -83,8 +83,8 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
         timeout:  timeout,
     }
 
-    // Start session cleanup goroutine with cas.timeout
-    go cleanupSessions(cas.sessions, cas.timeout)
+    // Start session cleanup goroutine with the timeout value
+    go cas.cleanupSessions()
     
     return cas, nil
 }
@@ -241,14 +241,14 @@ func generateSessionID() string {
     return "example_session_id"
 }
 
-// Update cleanupSessions function parameters
-func cleanupSessions(sessions map[string]sessionInfo, cleanupInterval time.Duration) {
-    ticker := time.NewTicker(cleanupInterval / 2)
+// Move cleanupSessions to be a method of CASAuth
+func (c *CASAuth) cleanupSessions() {
+    ticker := time.NewTicker(c.timeout / 2)
     for range ticker.C {
         now := time.Now()
-        for id, session := range sessions {
+        for id, session := range c.sessions {
             if now.After(session.expiry) {
-                delete(sessions, id)
+                delete(c.sessions, id)
             }
         }
     }
