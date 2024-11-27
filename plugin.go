@@ -3,6 +3,7 @@ package traefik_cas_auth
 
 import (
     "context"
+    "crypto/tls"
     "fmt"
     "net/http"
     "net/url"
@@ -19,12 +20,14 @@ type Config struct {
     CASServerURL string `json:"casServerURL,omitempty"`
     ServiceURLPattern string `json:"serviceURLPattern,omitempty"`
     SessionTimeout string `json:"sessionTimeout,omitempty"` // Changed to string type
+    InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
 }
 
 // CreateConfig creates the default plugin configuration
 func CreateConfig() *Config {
     return &Config{
         SessionTimeout: "24h",  // Default timeout as string
+        InsecureSkipVerify: false,  // Default to secure verification
     }
 }
 
@@ -34,6 +37,7 @@ type CASAuth struct {
     config   *Config
     sessions map[string]sessionInfo
     timeout  time.Duration    // Add this field
+    client   *http.Client
 }
 
 type sessionInfo struct {
@@ -78,12 +82,21 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
         return nil, fmt.Errorf("invalid SessionTimeout format: %v", err)
     }
 
+    // Create custom HTTP client with TLS configuration
+    tr := &http.Transport{
+        TLSClientConfig: &tls.Config{
+            InsecureSkipVerify: config.InsecureSkipVerify,
+        },
+    }
+    client := &http.Client{Transport: tr}
+
     cas := &CASAuth{
         next:     next,
         name:     name,
         config:   config,
         sessions: make(map[string]sessionInfo),
         timeout:  timeout,
+        client:   client,
     }
 
     // Start session cleanup goroutine with the timeout value
@@ -247,7 +260,7 @@ func (c *CASAuth) validateTicket(ticket, service string) (bool, string) {
         url.QueryEscape(ticket),
         url.QueryEscape(service))
 
-    resp, err := http.Get(validateURL)
+    resp, err := c.client.Get(validateURL)  // Use custom client instead of http.Get
     if err != nil {
         fmt.Printf("Error validating ticket: %v\n", err)
         return false, ""
