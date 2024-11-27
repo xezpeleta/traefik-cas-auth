@@ -59,7 +59,7 @@ experimental:
     plugins:
         cas-auth:
             moduleName: "github.com/xezpeleta/traefik-cas-auth"
-            version: "v0.0.8"
+            version: "v0.0.16"
 ```
 
 Then, you would configure the plugin in your dynamic configuration as follows:
@@ -104,7 +104,7 @@ services:
       - "--certificatesresolvers.myresolver.acme.email=your-email@example.com"
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
       - "--experimental.plugins.cas-auth.moduleName=github.com/xezpeleta/traefik-cas-auth"
-      - "--experimental.plugins.cas-auth.version=v0.0.8"
+      - "--experimental.plugins.cas-auth.version=v0.0.16"
     ports:
       - "80:80"
       - "443:443"
@@ -117,7 +117,12 @@ services:
     labels:
       - "traefik.http.routers.whoami.rule=Host(`whoami.example.com`)"
       - "traefik.http.routers.whoami.entrypoints=websecure"
+      # Enable CAS Auth middleware
       - "traefik.http.routers.whoami.middlewares=cas-auth"
+      # CAS Auth middleware configuration
+      - "traefik.http.middlewares.cas-auth.plugin.cas-auth.allowedHosts=*.example.com"
+      # For multiple hosts, use comma separation
+      - "traefik.http.middlewares.cas-auth.plugin.cas-auth.allowedHosts=*.example.com,app.example.com"
 ```
 
 ### Mixed configuration with docker-compose labels and dynamic configuration file
@@ -145,8 +150,10 @@ services:
       - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
       - "--certificatesresolvers.myresolver.acme.email=your-email@example.com"
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      # Load CAS Auth middleware plugin
       - "--experimental.plugins.cas-auth.moduleName=github.com/xezpeleta/traefik-cas-auth"
-      - "--experimental.plugins.cas-auth.version=v0.0.8"
+      # Specify the version of the plugin
+      - "--experimental.plugins.cas-auth.version=v0.0.16"
     ports:
       - "80:80"
       - "443:443"
@@ -162,7 +169,12 @@ services:
       - "traefik.http.routers.whoami.rule=Host(`whoami.example.com`)"
       - "traefik.http.routers.whoami.entrypoints=websecure"
       - "traefik.http.routers.whoami.tls.certresolver=myresolver"
+      # Enable CAS Auth middleware
       - "traefik.http.routers.whoami.middlewares=cas-auth"
+      # CAS Auth middleware configuration
+      - "traefik.http.middlewares.cas-auth.plugin.cas-auth.allowedHosts=*.example.com"
+      # For multiple hosts, use comma separation
+      - "traefik.http.middlewares.cas-auth.plugin.cas-auth.allowedHosts=*.example.com,app.example.com"
 ```
 
 The dynamic configuration file (`dynamic.yml`) configures the protected site `protectedsite.example.com` using the CAS middleware:
