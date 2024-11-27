@@ -4,5 +4,12 @@ iconPath: .assets/icon.png
 import: github.com/xezpeleta/traefik-cas-auth
 summary: Apereo CAS SSO authentication middleware for Traefik
 testData:
-  casServerURL: https://cas.example.com
-  serviceURLPattern: mydomain.com
+  casServerURL: "https://cas.example.com"
+  allowedHosts: 
+    - "*.example.com"
+    - "app.example.com"
+  pathPatterns:
+    - "/protected/.*"
+    - "/(api|docs)/.*"
+  sessionTimeout: "24h"
+  insecureSkipVerify: false
