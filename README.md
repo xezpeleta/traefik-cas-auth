@@ -3,7 +3,18 @@
 > [!WARNING]
 > This is a work in progress and is probably not ready for production use.
 
-This is a simple [Traefik](https://traefik.io/) middleware that allows you to authenticate users using a [Apereo CAS](https://apereo.github.io/cas) server.
+A Traefik middleware plugin that enables seamless authentication with Apereo CAS (Central Authentication Service). This plugin allows you to protect your web applications and APIs behind Traefik with enterprise-grade single sign-on using your existing CAS infrastructure.
+
+## Features
+
+- *Secure Authentication*: Integrates with CAS 3.0 protocol for robust authentication
+- *Flexible URL Protection*: Use regex patterns to protect specific domains and paths
+- *Session Management*: Configurable session duration with secure cookie handling
+- *CSRF Protection*: Built-in CSRF token validation for enhanced security
+- *Single Sign-Out*: Support for CAS single logout
+- *TLS Support*: Optional TLS certificate verification for secure connections
+- *Performance*: In-memory session storage for fast authentication checks
+- *Pattern Matching*: Granular control over which URLs require authentication
 
 ## Configuration
 
