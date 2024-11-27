@@ -154,7 +154,7 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     fmt.Printf("Processing request for: %s%s\n", req.Host, req.URL.Path)
 
-    // Check if request matches service pattern
+    // First declaration of serviceURL
     serviceURL := fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
     if !validateServiceURL(c.config.ServiceURLPatterns, serviceURL) {
         fmt.Printf("Invalid service URL: %s\n", serviceURL)
@@ -207,7 +207,7 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
         // Build service URL with original query parameters (excluding ticket)
         q := req.URL.Query()
         q.Del("ticket")
-        serviceURL := fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
+        serviceURL = fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
         if len(q) > 0 {
             serviceURL += "?" + q.Encode()
         }
@@ -242,11 +242,12 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
         }
     }
 
-    // No valid session or ticket, redirect to CAS login
-    serviceURL := fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
+    // Use = instead of := for serviceURL reassignment
+    serviceURL = fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
     
     // Generate CSRF token for new session
     sessionID := generateSessionID()
+    // Use = instead of := for csrfToken reassignment
     csrfToken = generateCSRFToken()
     c.sessions[sessionID] = sessionInfo{
         expiry: time.Now().Add(c.timeout),
