@@ -20,7 +20,8 @@ import (
 // Config holds the plugin configuration
 type Config struct {
     CASServerURL string `json:"casServerURL,omitempty"`
-    ServiceURLPatterns []string `json:"serviceURLPatterns,omitempty"`
+    AllowedHosts []string `json:"allowedHosts,omitempty"`
+    PathPatterns []string `json:"pathPatterns,omitempty"`
     SessionTimeout string `json:"sessionTimeout,omitempty"`
     InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
 }
@@ -30,18 +31,26 @@ func CreateConfig() *Config {
     return &Config{
         SessionTimeout: "24h",  // Default timeout as string
         InsecureSkipVerify: false,  // Default to secure verification
+        PathPatterns: []string{".*"}, // Allow all paths by default
     }
 }
 
 func (c *Config) ValidateServicePattern() error {
-    if len(c.ServiceURLPatterns) == 0 {
-        return fmt.Errorf("at least one service URL pattern must be specified")
+    if len(c.AllowedHosts) == 0 {
+        return fmt.Errorf("at least one allowed host must be specified")
     }
 
-    // Validate all patterns are valid regex
-    for _, pattern := range c.ServiceURLPatterns {
+    // Validate host patterns (only allow * prefix for subdomains)
+    for _, host := range c.AllowedHosts {
+        if strings.Contains(host, "*") && !strings.HasPrefix(host, "*.") {
+            return fmt.Errorf("invalid host pattern '%s': wildcard (*) only allowed as prefix", host)
+        }
+    }
+
+    // Validate path patterns
+    for _, pattern := range c.PathPatterns {
         if _, err := regexp.Compile(pattern); err != nil {
-            return fmt.Errorf("invalid regex pattern '%s': %v", pattern, err)
+            return fmt.Errorf("invalid path pattern '%s': %v", pattern, err)
         }
     }
 
@@ -86,9 +95,9 @@ type Attributes struct {
     // Add more attributes as needed
 }
 
-func validateServiceURL(patterns []string, serviceURL string) bool {
+func validateServiceURL(allowedHosts []string, pathPatterns []string, serviceURL string) bool {
     parsedURL, err := url.Parse(serviceURL)
-    if err != nil {
+    if (err != nil) {
         return false
     }
 
@@ -97,18 +106,34 @@ func validateServiceURL(patterns []string, serviceURL string) bool {
         return false
     }
 
-    testString := parsedURL.Host + parsedURL.Path
+    // Check host matches
+    hostMatched := false
+    for _, allowedHost := range allowedHosts {
+        if strings.HasPrefix(allowedHost, "*.") {
+            suffix := allowedHost[1:] // Remove *
+            if strings.HasSuffix(parsedURL.Host, suffix) {
+                hostMatched = true
+                break
+            }
+        } else if parsedURL.Host == allowedHost {
+            hostMatched = true
+            break
+        }
+    }
+    if !hostMatched {
+        return false
+    }
 
-    // Try to match any of the patterns
-    for _, pattern := range patterns {
+    // Check path matches (if patterns are defined)
+    for _, pattern := range pathPatterns {
         if regexp, err := regexp.Compile(pattern); err == nil {
-            if regexp.MatchString(testString) {
+            if regexp.MatchString(parsedURL.Path) {
                 return true
             }
         }
     }
 
-    return false
+    return len(pathPatterns) == 0
 }
 
 // New creates a new CAS auth middleware plugin
@@ -156,7 +181,7 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
     // First declaration of serviceURL
     serviceURL := fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
-    if !validateServiceURL(c.config.ServiceURLPatterns, serviceURL) {
+    if !validateServiceURL(c.config.AllowedHosts, c.config.PathPatterns, serviceURL) {
         fmt.Printf("Invalid service URL: %s\n", serviceURL)
         http.Error(rw, "Invalid service URL", http.StatusBadRequest)
         return
@@ -303,7 +328,7 @@ func (c *CASAuth) clearSessionCookie(rw http.ResponseWriter) {
 }
 
 func (c *CASAuth) validateTicket(ticket, service string) (bool, string) {
-    if !validateServiceURL(c.config.ServiceURLPatterns, service) {
+    if !validateServiceURL(c.config.AllowedHosts, c.config.PathPatterns, service) {
         fmt.Printf("Invalid service URL during ticket validation: %s\n", service)
         return false, ""
     }

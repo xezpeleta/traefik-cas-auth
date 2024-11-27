@@ -23,18 +23,32 @@ The middleware supports the following configuration options:
 | Option | Type | Required | Default | Description |
 |--------|------|----------|---------|-------------|
 | `casServerURL` | string | Yes | - | The base URL of your CAS server |
-| `serviceURLPatterns` | []string | Yes | - | Array of regex patterns for allowed service URLs |
+| `allowedHosts` | []string | Yes | - | Array of allowed hosts with optional wildcard prefix |
+| `pathPatterns` | []string | No | `[".*"]` | Array of regex patterns for path matching |
 | `sessionTimeout` | string | No | "24h" | Session duration (e.g., "24h", "30m") |
 | `insecureSkipVerify` | bool | No | false | Skip TLS certificate verification |
 
-### Service URL Patterns
+### Host Patterns
 
-The `serviceURLPatterns` field accepts an array of regular expressions that match against the `host + path` of incoming requests. All patterns must match valid HTTPS URLs.
+The `allowedHosts` field accepts an array of domain names. Wildcard (`*`) is only allowed as a prefix for matching subdomains.
+
+Valid examples:
+- `"example.com"` - Match exactly example.com
+- `"*.example.com"` - Match any subdomain of example.com
+- `["app.example.com", "*.api.example.com"]` - Match specific host and subdomains
+
+Invalid:
+- `"example.*"` - Wildcard only allowed as prefix
+- `"*example.com"` - Wildcard must be followed by dot
+
+### Path Patterns
+
+The `pathPatterns` field accepts an array of regular expressions that match against the path portion of URLs. If not specified, all paths are allowed.
 
 Common pattern examples:
-- `"(app|api)\\.example\\.com/.*"` - Match only app.example.com or api.example.com
-- `"example\\.com/protected/.*"` - Match paths starting with /protected/ on example.com
-- `"example\\.com/(api|docs)/.*"` - Match paths starting with /api/ or /docs/ on example.com
+- `"/protected/.*"` - Match paths starting with /protected/
+- `"/(api|docs)/.*"` - Match paths starting with /api/ or /docs/
+- `"/v[0-9]+/.*"` - Match versioned paths like /v1/, /v2/, etc.
 
 ## Usage
 
@@ -57,7 +71,10 @@ http:
             plugin:
                 cas-auth:
                     casServerUrl: "https://cas.example.com"
-                    serviceUrlPattern: "https://*.example.com/*"
+                    allowedHosts: 
+                      - "*.example.com"
+                    pathPatterns: 
+                      - "/.*"
                     sessionTimeout: 24h
     routers:
         my-service:
@@ -159,8 +176,10 @@ http:
       plugin:
         cas-auth:
           casServerUrl: "https://cas.example.com"
-          serviceUrlPatterns: 
+          allowedHosts: 
             - "*.example.com"
+          pathPatterns: 
+            - "/.*"
           sessionTimeout: 24h
 
   routers:
