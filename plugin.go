@@ -40,6 +40,7 @@ type sessionInfo struct {
     username string
     expiry   time.Time
     ticket   string    // Add ticket storage
+    csrfToken string    // Add CSRF token
 }
 
 // Add these structures for CAS validation response
@@ -110,6 +111,14 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     // Check for existing valid session
     if cookie, err := req.Cookie("cas_session"); err == nil {
         if session, exists := c.sessions[cookie.Value]; exists && time.Now().Before(session.expiry) {
+            // Validate CSRF token for POST requests
+            if req.Method == "POST" {
+                csrfToken := req.Header.Get("X-CSRF-Token")
+                if csrfToken == "" || csrfToken != session.csrfToken {
+                    http.Error(rw, "Invalid CSRF token", http.StatusForbidden)
+                    return
+                }
+            }
             fmt.Printf("Valid session found for user: %s\n", session.username)
             c.next.ServeHTTP(rw, req)
             return
@@ -122,7 +131,18 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
     // Check for CAS ticket in query params
     ticket := req.URL.Query().Get("ticket")
+    csrfToken := req.URL.Query().Get("csrf")
     if ticket != "" {
+        // Verify CSRF token if present in session
+        if cookie, err := req.Cookie("cas_session"); err == nil {
+            if session, exists := c.sessions[cookie.Value]; exists {
+                if csrfToken == "" || csrfToken != session.csrfToken {
+                    http.Error(rw, "Invalid CSRF token", http.StatusForbidden)
+                    return
+                }
+            }
+        }
+        
         fmt.Printf("Processing CAS ticket: %s\n", ticket)
         // Build service URL with original query parameters (excluding ticket)
         q := req.URL.Query()
@@ -135,12 +155,14 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
         // Validate ticket with CAS server
         if validated, username := c.validateTicket(ticket, serviceURL); validated {
             fmt.Printf("Ticket validated successfully for user: %s\n", username)
-            // Create new session
+            // Create new session with CSRF token
             sessionID := generateSessionID()
+            csrfToken := generateCSRFToken()
             c.sessions[sessionID] = sessionInfo{
                 username: username,
                 ticket:   ticket,
                 expiry:   time.Now().Add(c.timeout),    // Use c.timeout here
+                csrfToken: csrfToken,
             }
 
             // Set session cookie
@@ -163,9 +185,29 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     // No valid session or ticket, redirect to CAS login
     serviceURL := fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
     
+    // Generate CSRF token for new session
+    sessionID := generateSessionID()
+    csrfToken = generateCSRFToken()
+    c.sessions[sessionID] = sessionInfo{
+        expiry: time.Now().Add(c.timeout),
+        csrfToken: csrfToken,
+    }
+    
+    // Set session cookie before redirect
+    http.SetCookie(rw, &http.Cookie{
+        Name:     "cas_session",
+        Value:    sessionID,
+        Path:     "/",
+        Expires:  time.Now().Add(c.timeout),
+        HttpOnly: true,
+        Secure:   true,
+        SameSite: http.SameSiteStrictMode,
+    })
+    
     // Create new query parameters without any 'ticket' parameters
     q := req.URL.Query()
     q.Del("ticket")
+    q.Set("csrf", csrfToken)
     if len(q) > 0 {
         serviceURL += "?" + q.Encode()
     }
@@ -243,6 +285,15 @@ func generateSessionID() string {
     bytes := make([]byte, 32)
     if _, err := rand.Read(bytes); err != nil {
         // Fall back to timestamp if random generation fails
+        return fmt.Sprintf("%d", time.Now().UnixNano())
+    }
+    return hex.EncodeToString(bytes)
+}
+
+// Add new function to generate CSRF token
+func generateCSRFToken() string {
+    bytes := make([]byte, 32)
+    if _, err := rand.Read(bytes); err != nil {
         return fmt.Sprintf("%d", time.Now().UnixNano())
     }
     return hex.EncodeToString(bytes)
