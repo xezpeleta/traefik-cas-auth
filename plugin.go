@@ -10,6 +10,8 @@ import (
     "time"
     "encoding/xml"
     "io/ioutil"
+    "crypto/rand"
+    "encoding/hex"
 )
 
 // Config holds the plugin configuration
@@ -237,8 +239,13 @@ func (c *CASAuth) validateTicket(ticket, service string) (bool, string) {
 }
 
 func generateSessionID() string {
-    // Implement secure session ID generation
-    return "example_session_id"
+    // Generate 32 random bytes (256 bits)
+    bytes := make([]byte, 32)
+    if _, err := rand.Read(bytes); err != nil {
+        // Fall back to timestamp if random generation fails
+        return fmt.Sprintf("%d", time.Now().UnixNano())
+    }
+    return hex.EncodeToString(bytes)
 }
 
 // Move cleanupSessions to be a method of CASAuth
