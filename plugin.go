@@ -15,7 +15,7 @@ import (
     "encoding/hex"
     "path/filepath"
     "regexp"
-    "github.com/traefik/traefik/pkg/rules"
+    "rules"
 )
 
 // Config holds the plugin configuration
