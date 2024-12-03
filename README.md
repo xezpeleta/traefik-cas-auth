@@ -23,38 +23,22 @@ The middleware supports the following configuration options:
 | Option | Type | Required | Default | Description |
 |--------|------|----------|---------|-------------|
 | `casServerURL` | string | Yes | - | The base URL of your CAS server |
-| `allowedHosts` | []string | Yes | - | Array of allowed hosts with optional wildcard prefix |
-| `pathPatterns` | []string | No | `[".*"]` | Array of regex patterns for path matching |
-| `excludedPaths` | []string | No | `[]` | Array of regex patterns for paths that skip authentication |
+| `rule` | string | No | `"PathPrefix(`/`)"` | Traefik rule to determine which requests require authentication |
 | `sessionTimeout` | string | No | "24h" | Session duration (e.g., "24h", "30m") |
 | `insecureSkipVerify` | bool | No | false | Skip TLS certificate verification |
 
-### Host Patterns
+### Rules
 
-The `allowedHosts` field accepts an array of domain names. Wildcard (`*`) is only allowed as a prefix for matching subdomains.
+The `rule` field accepts Traefik rule syntax to determine which requests require CAS authentication. Any request not matching the rule will be passed through without authentication.
 
-Valid examples:
-- `"example.com"` - Match exactly example.com
-- `"*.example.com"` - Match any subdomain of example.com
-- `["app.example.com", "*.api.example.com"]` - Match specific host and subdomains
+Common rule examples:
+- `"PathPrefix(`/protected`)"` - Protect paths starting with /protected
+- `"PathPrefix(`/api`) || PathPrefix(`/admin`)"` - Protect /api and /admin paths
+- `"Host(`secure.example.com`)"` - Protect an entire domain
+- `"Path(`/login`)"` - Protect a specific path
+- `"Host(`admin.example.com`) && PathPrefix(`/api`)"` - Combine host and path conditions
 
-Invalid:
-- `"example.*"` - Wildcard only allowed as prefix
-- `"*example.com"` - Wildcard must be followed by dot
-
-### Path Patterns
-
-The `pathPatterns` field accepts an array of regular expressions that match against the path portion of URLs. If not specified, all paths are allowed.
-
-The `excludedPaths` field lets you specify paths that should skip authentication entirely. These patterns take precedence over `pathPatterns`.
-
-Common pattern examples:
-- `"/protected/.*"` - Match paths starting with /protected/
-- `"/(api|docs)/.*"` - Match paths starting with /api/ or /docs/
-- `"/v[0-9]+/.*"` - Match versioned paths like /v1/, /v2/, etc.
-- `"/public/.*"` - Skip authentication for paths starting with /public/
-- `"/(health|metrics)"` - Skip authentication for health checks and metrics endpoints
-- `"/assets/.*\.(css|js|png|jpg)"` - Skip authentication for static assets
+[See Traefik documentation for more rule syntax](https://doc.traefik.io/traefik/routing/routers/#rule)
 
 ## Usage
 
@@ -77,10 +61,7 @@ http:
             plugin:
                 cas-auth:
                     casServerUrl: "https://cas.example.com"
-                    allowedHosts: 
-                      - "*.example.com"
-                    pathPatterns: 
-                      - "/.*"
+                    rule: "PathPrefix(`/`)"
                     sessionTimeout: 24h
     routers:
         my-service:
@@ -126,9 +107,7 @@ services:
       # Enable CAS Auth middleware
       - "traefik.http.routers.whoami.middlewares=cas-auth"
       # CAS Auth middleware configuration
-      - "traefik.http.middlewares.cas-auth.plugin.cas-auth.allowedHosts=*.example.com"
-      # For multiple hosts, use comma separation
-      - "traefik.http.middlewares.cas-auth.plugin.cas-auth.allowedHosts=*.example.com,app.example.com"
+      - "traefik.http.middlewares.cas-auth.plugin.cas-auth.rule=PathPrefix(`/`)"
 ```
 
 ### Mixed configuration with docker-compose labels and dynamic configuration file
@@ -178,9 +157,7 @@ services:
       # Enable CAS Auth middleware
       - "traefik.http.routers.whoami.middlewares=cas-auth"
       # CAS Auth middleware configuration
-      - "traefik.http.middlewares.cas-auth.plugin.cas-auth.allowedHosts=*.example.com"
-      # For multiple hosts, use comma separation
-      - "traefik.http.middlewares.cas-auth.plugin.cas-auth.allowedHosts=*.example.com,app.example.com"
+      - "traefik.http.middlewares.cas-auth.plugin.cas-auth.rule=PathPrefix(`/`)"
 ```
 
 The dynamic configuration file (`dynamic.yml`) configures the protected site `protectedsite.example.com` using the CAS middleware:
@@ -194,10 +171,7 @@ http:
       plugin:
         cas-auth:
           casServerUrl: "https://cas.example.com"
-          allowedHosts: 
-            - "*.example.com"
-          pathPatterns: 
-            - "/.*"
+          rule: "PathPrefix(`/`)"
           sessionTimeout: 24h
 
   routers:

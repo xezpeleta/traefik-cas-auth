@@ -15,16 +15,15 @@ import (
     "encoding/hex"
     "path/filepath"
     "regexp"
+    "github.com/traefik/traefik/v2/pkg/rules"
 )
 
 // Config holds the plugin configuration
 type Config struct {
     CASServerURL string `json:"casServerURL,omitempty"`
-    AllowedHosts []string `json:"allowedHosts,omitempty"`
-    PathPatterns []string `json:"pathPatterns,omitempty"`
+    Rule string `json:"rule,omitempty"`
     SessionTimeout string `json:"sessionTimeout,omitempty"`
     InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
-    ExcludedPaths []string `json:"excludedPaths,omitempty"`
 }
 
 // CreateConfig creates the default plugin configuration
@@ -32,35 +31,19 @@ func CreateConfig() *Config {
     return &Config{
         SessionTimeout: "24h",  // Default timeout as string
         InsecureSkipVerify: false,  // Default to secure verification
-        PathPatterns: []string{".*"}, // Allow all paths by default
-        ExcludedPaths: []string{},
+        Rule: "PathPrefix(`/`)",
     }
 }
 
-func (c *Config) ValidateServicePattern() error {
-    if len(c.AllowedHosts) == 0 {
-        return fmt.Errorf("at least one allowed host must be specified")
+func (c *Config) ValidateConfig() error {
+    if len(c.CASServerURL) == 0 {
+        return fmt.Errorf("CASServerURL cannot be empty")
     }
 
-    // Validate host patterns (only allow * prefix for subdomains)
-    for _, host := range c.AllowedHosts {
-        if strings.Contains(host, "*") && !strings.HasPrefix(host, "*.") {
-            return fmt.Errorf("invalid host pattern '%s': wildcard (*) only allowed as prefix", host)
-        }
-    }
-
-    // Validate path patterns
-    for _, pattern := range c.PathPatterns {
-        if _, err := regexp.Compile(pattern); err != nil {
-            return fmt.Errorf("invalid path pattern '%s': %v", pattern, err)
-        }
-    }
-
-    // Validate excluded path patterns
-    for _, pattern := range c.ExcludedPaths {
-        if _, err := regexp.Compile(pattern); err != nil {
-            return fmt.Errorf("invalid excluded path pattern '%s': %v", pattern, err)
-        }
+    // Validate the rule syntax
+    _, err := rules.NewRule(c.Rule)
+    if err != nil {
+        return fmt.Errorf("invalid rule syntax: %v", err)
     }
 
     return nil
@@ -74,6 +57,7 @@ type CASAuth struct {
     timeout  time.Duration    // Add this field
     client   *http.Client
     ticketMap map[string]string // maps CAS tickets to session IDs
+    matcher  *rules.Rule
 }
 
 type sessionInfo struct {
@@ -173,8 +157,14 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
         return nil, fmt.Errorf("invalid SessionTimeout format: %v", err)
     }
 
-    if err := config.ValidateServicePattern(); err != nil {
+    if err := config.ValidateConfig(); err != nil {
         return nil, err
+    }
+
+    // Create the rule matcher
+    matcher, err := rules.NewRule(config.Rule)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create rule matcher: %v", err)
     }
 
     // Create custom HTTP client with TLS configuration
@@ -193,6 +183,7 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
         timeout:  timeout,
         client:   client,
         ticketMap: make(map[string]string), // Initialize ticketMap
+        matcher:  matcher,
     }
 
     // Start session cleanup goroutine with the timeout value
@@ -203,6 +194,13 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 
 func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     fmt.Printf("Processing request for: %s%s\n", req.Host, req.URL.Path)
+
+    // Check if the request matches the protection rule
+    if !c.matcher.Match(req) {
+        // Pass through without authentication
+        c.next.ServeHTTP(rw, req)
+        return
+    }
 
     // Check for excluded paths first
     serviceURL := fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
