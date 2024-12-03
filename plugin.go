@@ -24,6 +24,7 @@ type Config struct {
     PathPatterns []string `json:"pathPatterns,omitempty"`
     SessionTimeout string `json:"sessionTimeout,omitempty"`
     InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
+    ExcludedPaths []string `json:"excludedPaths,omitempty"`
 }
 
 // CreateConfig creates the default plugin configuration
@@ -32,6 +33,7 @@ func CreateConfig() *Config {
         SessionTimeout: "24h",  // Default timeout as string
         InsecureSkipVerify: false,  // Default to secure verification
         PathPatterns: []string{".*"}, // Allow all paths by default
+        ExcludedPaths: []string{},
     }
 }
 
@@ -51,6 +53,13 @@ func (c *Config) ValidateServicePattern() error {
     for _, pattern := range c.PathPatterns {
         if _, err := regexp.Compile(pattern); err != nil {
             return fmt.Errorf("invalid path pattern '%s': %v", pattern, err)
+        }
+    }
+
+    // Validate excluded path patterns
+    for _, pattern := range c.ExcludedPaths {
+        if _, err := regexp.Compile(pattern); err != nil {
+            return fmt.Errorf("invalid excluded path pattern '%s': %v", pattern, err)
         }
     }
 
@@ -101,22 +110,22 @@ type LogoutRequest struct {
     SessionID string   `xml:"SessionIdentifier"`
 }
 
-func validateServiceURL(allowedHosts []string, pathPatterns []string, serviceURL string) bool {
+func validateServiceURL(allowedHosts []string, pathPatterns []string, excludedPaths []string, serviceURL string) bool {
     parsedURL, err := url.Parse(serviceURL)
-    if (err != nil) {
+    if err != nil {
         return false
     }
 
-    // Check if URL is absolute and has https scheme
-    if (!parsedURL.IsAbs() || parsedURL.Scheme != "https") {
+    // Security: Always validate URL format first
+    if !parsedURL.IsAbs() || parsedURL.Scheme != "https" {
         return false
     }
 
-    // Check host matches
+    // Security: Always validate host before checking paths
     hostMatched := false
     for _, allowedHost := range allowedHosts {
         if strings.HasPrefix(allowedHost, "*.") {
-            suffix := allowedHost[1:] // Remove *
+            suffix := allowedHost[1:] 
             if strings.HasSuffix(parsedURL.Host, suffix) {
                 hostMatched = true
                 break
@@ -130,7 +139,16 @@ func validateServiceURL(allowedHosts []string, pathPatterns []string, serviceURL
         return false
     }
 
-    // Check path matches (if patterns are defined)
+    // Security: Check excluded paths only after host is validated
+    for _, pattern := range excludedPaths {
+        if regexp, err := regexp.Compile(pattern); err == nil {
+            if regexp.MatchString(parsedURL.Path) {
+                return true // Allow access without authentication
+            }
+        }
+    }
+
+    // Check path patterns last
     for _, pattern := range pathPatterns {
         if regexp, err := regexp.Compile(pattern); err == nil {
             if regexp.MatchString(parsedURL.Path) {
@@ -186,6 +204,18 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     fmt.Printf("Processing request for: %s%s\n", req.Host, req.URL.Path)
 
+    // Check for excluded paths first
+    serviceURL := fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
+    for _, pattern := range c.config.ExcludedPaths {
+        if regexp, err := regexp.Compile(pattern); err == nil {
+            if regexp.MatchString(req.URL.Path) {
+                fmt.Printf("Path excluded from authentication: %s\n", req.URL.Path)
+                c.next.ServeHTTP(rw, req)
+                return
+            }
+        }
+    }
+
     // Add SLO handler right after the first few lines
     if req.Method == "POST" && req.URL.Path == "/cas/logout" {
         c.handleSLO(rw, req)
@@ -193,8 +223,8 @@ func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     }
 
     // First declaration of serviceURL
-    serviceURL := fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
-    if !validateServiceURL(c.config.AllowedHosts, c.config.PathPatterns, serviceURL) {
+    serviceURL = fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
+    if !validateServiceURL(c.config.AllowedHosts, c.config.PathPatterns, c.config.ExcludedPaths, serviceURL) {
         fmt.Printf("Invalid service URL: %s\n", serviceURL)
         http.Error(rw, "Invalid service URL", http.StatusBadRequest)
         return
@@ -343,7 +373,7 @@ func (c *CASAuth) clearSessionCookie(rw http.ResponseWriter) {
 }
 
 func (c *CASAuth) validateTicket(ticket, service string) (bool, string) {
-    if !validateServiceURL(c.config.AllowedHosts, c.config.PathPatterns, service) {
+    if !validateServiceURL(c.config.AllowedHosts, c.config.PathPatterns, c.config.ExcludedPaths, service) {
         fmt.Printf("Invalid service URL during ticket validation: %s\n", service)
         return false, ""
     }

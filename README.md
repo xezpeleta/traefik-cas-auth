@@ -25,6 +25,7 @@ The middleware supports the following configuration options:
 | `casServerURL` | string | Yes | - | The base URL of your CAS server |
 | `allowedHosts` | []string | Yes | - | Array of allowed hosts with optional wildcard prefix |
 | `pathPatterns` | []string | No | `[".*"]` | Array of regex patterns for path matching |
+| `excludedPaths` | []string | No | `[]` | Array of regex patterns for paths that skip authentication |
 | `sessionTimeout` | string | No | "24h" | Session duration (e.g., "24h", "30m") |
 | `insecureSkipVerify` | bool | No | false | Skip TLS certificate verification |
 
@@ -45,10 +46,15 @@ Invalid:
 
 The `pathPatterns` field accepts an array of regular expressions that match against the path portion of URLs. If not specified, all paths are allowed.
 
+The `excludedPaths` field lets you specify paths that should skip authentication entirely. These patterns take precedence over `pathPatterns`.
+
 Common pattern examples:
 - `"/protected/.*"` - Match paths starting with /protected/
 - `"/(api|docs)/.*"` - Match paths starting with /api/ or /docs/
 - `"/v[0-9]+/.*"` - Match versioned paths like /v1/, /v2/, etc.
+- `"/public/.*"` - Skip authentication for paths starting with /public/
+- `"/(health|metrics)"` - Skip authentication for health checks and metrics endpoints
+- `"/assets/.*\.(css|js|png|jpg)"` - Skip authentication for static assets
 
 ## Usage
 
@@ -221,5 +227,6 @@ http:
 
 ### Features
 
+- [x] Support whitelist path patterns for unprotected paths
 - [ ] Currently only CAS 3.0 is supported. Support for CAS 1.0 and 2.0.
 - [ ] Improve error responses to clients
