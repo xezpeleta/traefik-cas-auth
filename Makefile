@@ -1,20 +1,14 @@
-.PHONY: lint test vendor clean
+.PHONY: build test lint clean
 
-export GO111MODULE=on
+build:
+	go build -v ./...
 
-default: lint test
+test:
+	go test -v -race -cover ./...
 
 lint:
 	golangci-lint run
 
-test:
-	go test -v -cover ./...
-
-yaegi_test:
-	yaegi test -v .
-
-vendor:
-	go mod vendor
-
 clean:
-	rm -rf ./vendor
+	go clean
+	rm -f traefik-cas-auth
