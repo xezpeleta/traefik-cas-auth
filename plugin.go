@@ -24,6 +24,7 @@ type Config struct {
     Rule string `json:"rule,omitempty"`
     SessionTimeout string `json:"sessionTimeout,omitempty"`
     InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
+    ExceptionRule string `json:"exceptionRule,omitempty"`
 }
 
 // CreateConfig creates the default plugin configuration
@@ -32,6 +33,7 @@ func CreateConfig() *Config {
         SessionTimeout: "24h",  // Default timeout as string
         InsecureSkipVerify: false,  // Default to secure verification
         Rule: "PathPrefix(`/`)",
+        ExceptionRule: "",  // Empty by default
     }
 }
 
@@ -46,6 +48,14 @@ func (c *Config) ValidateConfig() error {
         return fmt.Errorf("invalid rule syntax: %v", err)
     }
 
+    // Validate the exception rule syntax if provided
+    if c.ExceptionRule != "" {
+        _, err := rules.NewRule(c.ExceptionRule)
+        if err != nil {
+            return fmt.Errorf("invalid exception rule syntax: %v", err)
+        }
+    }
+
     return nil
 }
 
@@ -58,6 +68,7 @@ type CASAuth struct {
     client   *http.Client
     ticketMap map[string]string // maps CAS tickets to session IDs
     matcher  *rules.Rule
+    exceptionMatcher *rules.Rule
 }
 
 type sessionInfo struct {
@@ -167,6 +178,16 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
         return nil, fmt.Errorf("failed to create rule matcher: %v", err)
     }
 
+    // Create the exception rule matcher if configured
+    var exceptionMatcher *rules.Rule
+    if config.ExceptionRule != "" {
+        var err error
+        exceptionMatcher, err = rules.NewRule(config.ExceptionRule)
+        if err != nil {
+            return nil, fmt.Errorf("failed to create exception rule matcher: %v", err)
+        }
+    }
+
     // Create custom HTTP client with TLS configuration
     tr := &http.Transport{
         TLSClientConfig: &tls.Config{
@@ -184,6 +205,7 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
         client:   client,
         ticketMap: make(map[string]string), // Initialize ticketMap
         matcher:  matcher,
+        exceptionMatcher: exceptionMatcher,
     }
 
     // Start session cleanup goroutine with the timeout value
@@ -194,6 +216,13 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 
 func (c *CASAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     fmt.Printf("Processing request for: %s%s\n", req.Host, req.URL.Path)
+
+    // Check exception rule first if configured
+    if c.exceptionMatcher != nil && c.exceptionMatcher.Match(req) {
+        fmt.Printf("Request matches exception rule, bypassing authentication\n")
+        c.next.ServeHTTP(rw, req)
+        return
+    }
 
     // Check if the request matches the protection rule
     if !c.matcher.Match(req) {

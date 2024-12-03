@@ -24,6 +24,7 @@ The middleware supports the following configuration options:
 |--------|------|----------|---------|-------------|
 | `casServerURL` | string | Yes | - | The base URL of your CAS server |
 | `rule` | string | No | `"PathPrefix(`/`)"` | Traefik rule to determine which requests require authentication |
+| `exceptionRule` | string | No | - | Traefik rule to determine which requests to exclude from authentication |
 | `sessionTimeout` | string | No | "24h" | Session duration (e.g., "24h", "30m") |
 | `insecureSkipVerify` | bool | No | false | Skip TLS certificate verification |
 
@@ -31,12 +32,13 @@ The middleware supports the following configuration options:
 
 The `rule` field accepts Traefik rule syntax to determine which requests require CAS authentication. Any request not matching the rule will be passed through without authentication.
 
-Common rule examples:
-- `"PathPrefix(`/protected`)"` - Protect paths starting with /protected
-- `"PathPrefix(`/api`) || PathPrefix(`/admin`)"` - Protect /api and /admin paths
-- `"Host(`secure.example.com`)"` - Protect an entire domain
-- `"Path(`/login`)"` - Protect a specific path
-- `"Host(`admin.example.com`) && PathPrefix(`/api`)"` - Combine host and path conditions
+The `exceptionRule` field accepts the same Traefik rule syntax but defines which requests should be explicitly excluded from authentication. Exception rules have higher priority than normal rules.
+
+Common exception rule examples:
+- `"Path(`/public`)"` - Allow public access to /public path
+- `"PathPrefix(`/assets/`) || PathPrefix(`/images/`)"` - Allow public access to static assets
+- `"Host(`public.example.com`)"` - Allow public access to entire domain
+- `"Headers(`X-Public-Access`, `true`)"` - Allow public access based on headers
 
 [See Traefik documentation for more rule syntax](https://doc.traefik.io/traefik/routing/routers/#rule)
 
