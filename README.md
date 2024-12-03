@@ -18,7 +18,7 @@ A Traefik middleware plugin that enables seamless authentication with Apereo CAS
 
 ## Configuration
 
-The middleware supports the following configuration options:
+The middleware requires minimal configuration. Only the CAS server URL is required:
 
 | Option | Type | Required | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -41,6 +41,10 @@ Common exception rule examples:
 - `"Headers(`X-Public-Access`, `true`)"` - Allow public access based on headers
 
 [See Traefik documentation for more rule syntax](https://doc.traefik.io/traefik/routing/routers/#rule)
+
+### Minimal Configuration Example
+
+The simplest configuration only requires the CAS server URL:
 
 ## Usage
 

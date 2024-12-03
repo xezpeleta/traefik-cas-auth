@@ -32,23 +32,18 @@ func CreateConfig() *Config {
     return &Config{
         SessionTimeout: "24h",  // Default timeout as string
         InsecureSkipVerify: false,  // Default to secure verification
-        Rule: "PathPrefix(`/`)",
+        Rule: "PathPrefix(`/`)",  // By default, protect everything
         ExceptionRule: "",  // Empty by default
     }
 }
 
 func (c *Config) ValidateConfig() error {
+    // Only CASServerURL is required
     if len(c.CASServerURL) == 0 {
         return fmt.Errorf("CASServerURL cannot be empty")
     }
 
-    // Validate the rule syntax
-    _, err := rules.NewRule(c.Rule)
-    if err != nil {
-        return fmt.Errorf("invalid rule syntax: %v", err)
-    }
-
-    // Validate the exception rule syntax if provided
+    // Only validate exception rule if provided
     if c.ExceptionRule != "" {
         _, err := rules.NewRule(c.ExceptionRule)
         if err != nil {
@@ -112,7 +107,7 @@ func validateServiceURL(allowedHosts []string, pathPatterns []string, excludedPa
     }
 
     // Security: Always validate URL format first
-    if !parsedURL.IsAbs() || parsedURL.Scheme != "https" {
+    if (!parsedURL.IsAbs() || parsedURL.Scheme != "https") {
         return false
     }
 
@@ -172,7 +167,10 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
         return nil, err
     }
 
-    // Create the rule matcher
+    // Always create the rule matcher with default rule if not provided
+    if config.Rule == "" {
+        config.Rule = "PathPrefix(`/`)"
+    }
     matcher, err := rules.NewRule(config.Rule)
     if err != nil {
         return nil, fmt.Errorf("failed to create rule matcher: %v", err)
